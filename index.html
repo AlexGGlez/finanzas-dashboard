@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mis Finanzas — Dashboard</title>
+<link rel="stylesheet" href="style.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+</head>
+<body>
+<div class="app">
+
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-icon">💰</span>
+      <h1>Mis Finanzas</h1>
+    </div>
+    <div class="topbar-actions">
+      <input type="month" id="monthFilter" title="Filtrar mes">
+      <button id="exportCsvBtn" class="btn btn-ghost">Exportar CSV</button>
+      <button id="exportJsonBtn" class="btn btn-ghost">Backup JSON</button>
+      <label class="btn btn-ghost" for="importJsonInput">Importar</label>
+      <input type="file" id="importJsonInput" accept="application/json" hidden>
+      <button id="addBtn" class="btn btn-primary">+ Nuevo movimiento</button>
+    </div>
+  </header>
+
+  <main class="content">
+
+    <section class="cards">
+      <div class="card card-balance">
+        <span class="card-label">Balance total</span>
+        <span class="card-value" id="cardBalance">€0.00</span>
+      </div>
+      <div class="card card-income">
+        <span class="card-label">Ingresos (mes)</span>
+        <span class="card-value" id="cardIncome">€0.00</span>
+      </div>
+      <div class="card card-expense">
+        <span class="card-label">Gastos (mes)</span>
+        <span class="card-value" id="cardExpense">€0.00</span>
+      </div>
+      <div class="card card-savings">
+        <span class="card-label">Ahorro (mes)</span>
+        <span class="card-value" id="cardSavings">€0.00</span>
+      </div>
+    </section>
+
+    <section class="grid-charts">
+      <div class="panel">
+        <h2>Gastos por categoría</h2>
+        <div class="chart-wrap">
+          <canvas id="categoryChart"></canvas>
+        </div>
+        <p class="empty-hint" id="categoryEmptyHint">Aún no hay gastos este mes.</p>
+      </div>
+      <div class="panel">
+        <h2>Evolución mensual</h2>
+        <div class="chart-wrap">
+          <canvas id="trendChart"></canvas>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel" id="budgetsPanel">
+      <div class="panel-header">
+        <h2>Presupuestos por categoría</h2>
+        <button id="manageBudgetsBtn" class="btn btn-small">Gestionar</button>
+      </div>
+      <div id="budgetsList" class="budgets-list"></div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-header">
+        <h2>Movimientos</h2>
+        <div class="filters">
+          <input type="text" id="searchInput" placeholder="Buscar descripción...">
+          <select id="typeFilter">
+            <option value="">Todos los tipos</option>
+            <option value="gasto">Gastos</option>
+            <option value="ingreso">Ingresos</option>
+          </select>
+          <select id="categoryFilter">
+            <option value="">Todas las categorías</option>
+          </select>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table id="txTable">
+          <thead>
+            <tr>
+              <th>Fecha</th>
+              <th>Descripción</th>
+              <th>Categoría</th>
+              <th>Método</th>
+              <th class="col-amount">Importe</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="txTableBody"></tbody>
+        </table>
+        <p class="empty-hint" id="txEmptyHint">No hay movimientos con estos filtros.</p>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<div class="modal-backdrop" id="modalBackdrop">
+  <div class="modal">
+    <div class="modal-header">
+      <h3 id="modalTitle">Nuevo movimiento</h3>
+      <button class="modal-close" id="modalClose">&times;</button>
+    </div>
+    <form id="txForm">
+      <input type="hidden" id="txId">
+      <div class="form-row type-toggle">
+        <button type="button" class="type-btn active" data-type="gasto" id="typeGastoBtn">Gasto</button>
+        <button type="button" class="type-btn" data-type="ingreso" id="typeIngresoBtn">Ingreso</button>
+      </div>
+      <div class="form-row">
+        <label for="txDate">Fecha</label>
+        <input type="date" id="txDate" required>
+      </div>
+      <div class="form-row">
+        <label for="txDesc">Descripción</label>
+        <input type="text" id="txDesc" placeholder="Ej. Compra supermercado" required>
+      </div>
+      <div class="form-row">
+        <label for="txAmount">Importe (€)</label>
+        <input type="number" id="txAmount" step="0.01" min="0" placeholder="0.00" required>
+      </div>
+      <div class="form-row">
+        <label for="txCategory">Categoría</label>
+        <select id="txCategory" required></select>
+      </div>
+      <div class="form-row">
+        <label for="txMethod">Método de pago</label>
+        <select id="txMethod">
+          <option>Tarjeta</option>
+          <option>Efectivo</option>
+          <option>Transferencia</option>
+          <option>Domiciliación</option>
+          <option>Otro</option>
+        </select>
+      </div>
+      <div class="form-actions">
+        <button type="button" class="btn btn-ghost" id="deleteTxBtn" style="display:none;">Eliminar</button>
+        <div class="spacer"></div>
+        <button type="button" class="btn btn-ghost" id="cancelTxBtn">Cancelar</button>
+        <button type="submit" class="btn btn-primary">Guardar</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="budgetModalBackdrop">
+  <div class="modal">
+    <div class="modal-header">
+      <h3>Presupuestos mensuales</h3>
+      <button class="modal-close" id="budgetModalClose">&times;</button>
+    </div>
+    <div id="budgetForm" class="budget-form"></div>
+    <div class="form-actions">
+      <div class="spacer"></div>
+      <button type="button" class="btn btn-primary" id="saveBudgetsBtn">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
