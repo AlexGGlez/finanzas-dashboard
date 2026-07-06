@@ -7,12 +7,14 @@
 
   const DEFAULT_CATEGORIES = [
     "Alimentación", "Vivienda", "Transporte", "Ocio", "Salud",
-    "Educación", "Ropa", "Suscripciones", "Ahorro/Inversión", "Otros", "Nómina/Ingresos"
+    "Educación", "Ropa", "Suscripciones", "Ahorro/Inversión", "Otros", "Nómina/Ingresos",
+    "Coche", "Apuestas"
   ];
 
   const CATEGORY_COLORS = [
     "#6d8cff", "#3ecf8e", "#ff6b6b", "#f5c150", "#c179f2",
-    "#3fc7d6", "#ff9f6b", "#8fd14f", "#f27bb0", "#9aa1ac", "#5ad1a8"
+    "#3fc7d6", "#ff9f6b", "#8fd14f", "#f27bb0", "#9aa1ac", "#5ad1a8",
+    "#e08ef7", "#4fa3e3"
   ];
 
   const fmt = (n) => "€" + (Number(n) || 0).toLocaleString("es-ES", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -35,6 +37,12 @@
   let transactions = load(STORAGE_KEY, []);
   let budgets = load(BUDGETS_KEY, {});
   let categories = load(CATEGORIES_KEY, DEFAULT_CATEGORIES);
+
+  const missingDefaults = DEFAULT_CATEGORIES.filter((c) => !categories.includes(c));
+  if (missingDefaults.length > 0) {
+    categories = [...categories, ...missingDefaults];
+    save(CATEGORIES_KEY, categories);
+  }
 
   let categoryChart = null;
   let trendChart = null;
