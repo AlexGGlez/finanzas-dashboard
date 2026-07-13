@@ -222,6 +222,39 @@ tbody tr:hover { background: var(--panel-2); cursor: pointer; }
 .budget-form-row span { flex: 1; font-size: 14px; }
 .budget-form-row input { width: 110px; }
 
+.app.hidden { display: none; }
+
+.auth-screen {
+  display: none;
+  position: fixed;
+  inset: 0;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg);
+  z-index: 100;
+  padding: 20px;
+}
+.auth-screen.show { display: flex; }
+
+.auth-card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 28px;
+  width: 380px;
+  max-width: 100%;
+}
+.auth-card .brand { justify-content: center; margin-bottom: 6px; }
+.auth-subtitle { color: var(--text-dim); font-size: 13px; text-align: center; margin: 0 0 20px; }
+.auth-error { color: var(--expense); font-size: 13px; margin: 0; min-height: 0; }
+.auth-error:empty { display: none; }
+.auth-hint { color: var(--text-dim); font-size: 13px; margin: 0; }
+.auth-hint:empty { display: none; }
+.auth-actions { display: flex; flex-direction: column; gap: 10px; margin-top: 6px; }
+.auth-actions .btn { width: 100%; justify-content: center; }
+
+.user-email { color: var(--text-dim); font-size: 13px; }
+
 @media (max-width: 900px) {
   .cards { grid-template-columns: repeat(2, 1fr); }
   .grid-charts { grid-template-columns: 1fr; }

@@ -1,9 +1,9 @@
 (() => {
   "use strict";
 
-  const STORAGE_KEY = "finanzas.transactions.v1";
-  const BUDGETS_KEY = "finanzas.budgets.v1";
-  const CATEGORIES_KEY = "finanzas.categories.v1";
+  const SUPABASE_URL = "https://yxrqyoyrmkoucjtqavfb.supabase.co";
+  const SUPABASE_ANON_KEY = "sb_publishable_EURgI9cXlcuy-4JofF1-NA_44ykuoVm";
+  const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
   const DEFAULT_CATEGORIES = [
     "Alimentación", "Vivienda", "Transporte", "Ocio", "Salud",
@@ -20,29 +20,11 @@
   const fmt = (n) => "€" + (Number(n) || 0).toLocaleString("es-ES", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const todayISO = () => new Date().toISOString().slice(0, 10);
   const currentMonth = () => new Date().toISOString().slice(0, 7);
-  const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 
-  function load(key, fallback) {
-    try {
-      const raw = localStorage.getItem(key);
-      return raw ? JSON.parse(raw) : fallback;
-    } catch {
-      return fallback;
-    }
-  }
-  function save(key, value) {
-    localStorage.setItem(key, JSON.stringify(value));
-  }
-
-  let transactions = load(STORAGE_KEY, []);
-  let budgets = load(BUDGETS_KEY, {});
-  let categories = load(CATEGORIES_KEY, DEFAULT_CATEGORIES);
-
-  const missingDefaults = DEFAULT_CATEGORIES.filter((c) => !categories.includes(c));
-  if (missingDefaults.length > 0) {
-    categories = [...categories, ...missingDefaults];
-    save(CATEGORIES_KEY, categories);
-  }
+  let transactions = [];
+  let budgets = {};
+  let categories = [...DEFAULT_CATEGORIES];
+  let currentUserId = null;
 
   let categoryChart = null;
   let trendChart = null;
@@ -57,8 +39,20 @@
 
   monthFilter.value = currentMonth();
 
+  function rowToTx(row) {
+    return {
+      id: row.id,
+      type: row.type,
+      date: row.date,
+      desc: row.description,
+      amount: Number(row.amount),
+      category: row.category,
+      method: row.method,
+      createdAt: new Date(row.created_at).getTime()
+    };
+  }
+
   function populateCategorySelects() {
-    const selects = [$("txCategory"), categoryFilter];
     const filterPrevValue = categoryFilter.value;
     categoryFilter.innerHTML = '<option value="">Todas las categorías</option>';
     $("txCategory").innerHTML = "";
@@ -231,12 +225,14 @@
         if (e.target.closest(".row-delete")) return;
         openEditModal(t.id);
       });
-      tr.querySelector(".row-delete").addEventListener("click", (e) => {
+      tr.querySelector(".row-delete").addEventListener("click", async (e) => {
         e.stopPropagation();
         if (confirm("¿Eliminar este movimiento?")) {
-          transactions = transactions.filter((x) => x.id !== t.id);
-          save(STORAGE_KEY, transactions);
-          renderAll();
+          const ok = await deleteTransactionById(t.id);
+          if (ok) {
+            transactions = transactions.filter((x) => x.id !== t.id);
+            renderAll();
+          }
         }
       });
       tbody.appendChild(tr);
@@ -255,6 +251,76 @@
     renderTrendChart();
     renderBudgets();
     renderTable();
+  }
+
+  // ---------- supabase: transactions CRUD ----------
+  async function insertTransaction(record) {
+    const { data, error } = await supabase.from("transactions").insert({
+      user_id: currentUserId,
+      type: record.type,
+      date: record.date,
+      description: record.desc,
+      amount: record.amount,
+      category: record.category,
+      method: record.method
+    }).select().single();
+    if (error) { alert("Error al guardar: " + error.message); return null; }
+    return rowToTx(data);
+  }
+
+  async function updateTransactionById(id, record) {
+    const { data, error } = await supabase.from("transactions").update({
+      type: record.type,
+      date: record.date,
+      description: record.desc,
+      amount: record.amount,
+      category: record.category,
+      method: record.method
+    }).eq("id", id).select().single();
+    if (error) { alert("Error al guardar: " + error.message); return null; }
+    return rowToTx(data);
+  }
+
+  async function deleteTransactionById(id) {
+    const { error } = await supabase.from("transactions").delete().eq("id", id);
+    if (error) { alert("Error al eliminar: " + error.message); return false; }
+    return true;
+  }
+
+  async function saveSettings() {
+    const { error } = await supabase.from("user_settings").upsert({
+      user_id: currentUserId,
+      categories,
+      budgets
+    });
+    if (error) alert("Error al guardar ajustes: " + error.message);
+  }
+
+  async function loadAllData() {
+    const [txRes, settingsRes] = await Promise.all([
+      supabase.from("transactions").select("*").order("date", { ascending: false }),
+      supabase.from("user_settings").select("*").maybeSingle()
+    ]);
+
+    transactions = txRes.error ? [] : txRes.data.map(rowToTx);
+    if (txRes.error) alert("Error al cargar movimientos: " + txRes.error.message);
+
+    if (settingsRes.data) {
+      categories = (settingsRes.data.categories && settingsRes.data.categories.length) ? settingsRes.data.categories : [...DEFAULT_CATEGORIES];
+      budgets = settingsRes.data.budgets || {};
+    } else {
+      categories = [...DEFAULT_CATEGORIES];
+      budgets = {};
+      await saveSettings();
+    }
+
+    const missingDefaults = DEFAULT_CATEGORIES.filter((c) => !categories.includes(c));
+    if (missingDefaults.length > 0) {
+      categories = [...categories, ...missingDefaults];
+      await saveSettings();
+    }
+
+    populateCategorySelects();
   }
 
   // ---------- modal: add/edit transaction ----------
@@ -304,37 +370,45 @@
   $("typeGastoBtn").addEventListener("click", () => setType("gasto"));
   $("typeIngresoBtn").addEventListener("click", () => setType("ingreso"));
 
-  $("deleteTxBtn").addEventListener("click", () => {
+  $("deleteTxBtn").addEventListener("click", async () => {
     const id = $("txId").value;
     if (id && confirm("¿Eliminar este movimiento?")) {
-      transactions = transactions.filter((x) => x.id !== id);
-      save(STORAGE_KEY, transactions);
-      closeModal();
-      renderAll();
+      const ok = await deleteTransactionById(id);
+      if (ok) {
+        transactions = transactions.filter((x) => x.id !== id);
+        closeModal();
+        renderAll();
+      }
     }
   });
 
-  txForm.addEventListener("submit", (e) => {
+  txForm.addEventListener("submit", async (e) => {
     e.preventDefault();
     const id = $("txId").value;
     const record = {
-      id: id || uid(),
       type: currentType,
       date: $("txDate").value,
       desc: $("txDesc").value.trim(),
       amount: Math.abs(parseFloat($("txAmount").value)) || 0,
       category: $("txCategory").value,
-      method: $("txMethod").value,
-      createdAt: id ? (transactions.find((x) => x.id === id)?.createdAt || Date.now()) : Date.now()
+      method: $("txMethod").value
     };
-    if (id) {
-      transactions = transactions.map((x) => (x.id === id ? record : x));
-    } else {
-      transactions.push(record);
+
+    const submitBtn = txForm.querySelector('button[type="submit"]');
+    submitBtn.disabled = true;
+    try {
+      if (id) {
+        const updated = await updateTransactionById(id, record);
+        if (updated) transactions = transactions.map((x) => (x.id === id ? updated : x));
+      } else {
+        const created = await insertTransaction(record);
+        if (created) transactions.push(created);
+      }
+      closeModal();
+      renderAll();
+    } finally {
+      submitBtn.disabled = false;
     }
-    save(STORAGE_KEY, transactions);
-    closeModal();
-    renderAll();
   });
 
   // ---------- modal: budgets ----------
@@ -359,14 +433,14 @@
   $("budgetModalClose").addEventListener("click", () => budgetModalBackdrop.classList.remove("show"));
   budgetModalBackdrop.addEventListener("click", (e) => { if (e.target === budgetModalBackdrop) budgetModalBackdrop.classList.remove("show"); });
 
-  $("saveBudgetsBtn").addEventListener("click", () => {
+  $("saveBudgetsBtn").addEventListener("click", async () => {
     const inputs = $("budgetForm").querySelectorAll("input[data-cat]");
     budgets = {};
     inputs.forEach((inp) => {
       const val = parseFloat(inp.value);
       if (val > 0) budgets[inp.dataset.cat] = val;
     });
-    save(BUDGETS_KEY, budgets);
+    await saveSettings();
     budgetModalBackdrop.classList.remove("show");
     renderBudgets();
   });
@@ -396,18 +470,34 @@
     const file = e.target.files[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = () => {
+    reader.onload = async () => {
       try {
         const payload = JSON.parse(reader.result);
         if (!Array.isArray(payload.transactions)) throw new Error("Formato inválido");
-        if (!confirm("Esto reemplazará todos tus datos actuales por los del backup. ¿Continuar?")) return;
-        transactions = payload.transactions;
+        if (!confirm("Esto reemplazará todos tus datos actuales en la nube por los del backup. ¿Continuar?")) return;
+
+        const { error: delError } = await supabase.from("transactions").delete().eq("user_id", currentUserId);
+        if (delError) throw delError;
+
+        if (payload.transactions.length > 0) {
+          const rows = payload.transactions.map((t) => ({
+            user_id: currentUserId,
+            type: t.type,
+            date: t.date,
+            description: t.desc,
+            amount: t.amount,
+            category: t.category,
+            method: t.method || null
+          }));
+          const { error: insError } = await supabase.from("transactions").insert(rows);
+          if (insError) throw insError;
+        }
+
+        categories = payload.categories && payload.categories.length ? payload.categories : [...DEFAULT_CATEGORIES];
         budgets = payload.budgets || {};
-        categories = payload.categories || DEFAULT_CATEGORIES;
-        save(STORAGE_KEY, transactions);
-        save(BUDGETS_KEY, budgets);
-        save(CATEGORIES_KEY, categories);
-        populateCategorySelects();
+        await saveSettings();
+
+        await loadAllData();
         renderAll();
         alert("Backup importado correctamente.");
       } catch (err) {
@@ -429,7 +519,72 @@
     URL.revokeObjectURL(url);
   }
 
-  // ---------- init ----------
-  populateCategorySelects();
-  renderAll();
+  // ---------- auth ----------
+  const authScreen = $("authScreen");
+  const appRoot = $("app");
+  let authMode = "signin";
+
+  function showApp(user) {
+    authScreen.classList.remove("show");
+    appRoot.classList.remove("hidden");
+    $("userEmail").textContent = user.email;
+  }
+
+  function showAuthScreen() {
+    appRoot.classList.add("hidden");
+    authScreen.classList.add("show");
+    txForm.reset();
+    modalBackdrop.classList.remove("show");
+    budgetModalBackdrop.classList.remove("show");
+  }
+
+  $("authToggleBtn").addEventListener("click", () => {
+    authMode = authMode === "signin" ? "signup" : "signin";
+    $("authSubmitBtn").textContent = authMode === "signin" ? "Iniciar sesión" : "Crear cuenta";
+    $("authToggleBtn").textContent = authMode === "signin" ? "¿No tienes cuenta? Regístrate" : "¿Ya tienes cuenta? Inicia sesión";
+    $("authError").textContent = "";
+    $("authHint").textContent = "";
+  });
+
+  $("authForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    $("authError").textContent = "";
+    $("authHint").textContent = "";
+    const email = $("authEmail").value.trim();
+    const password = $("authPassword").value;
+    const submitBtn = $("authSubmitBtn");
+    submitBtn.disabled = true;
+    try {
+      if (authMode === "signin") {
+        const { error } = await supabase.auth.signInWithPassword({ email, password });
+        if (error) throw error;
+      } else {
+        const { data, error } = await supabase.auth.signUp({ email, password });
+        if (error) throw error;
+        if (data.session === null) {
+          $("authHint").textContent = "Cuenta creada. Revisa tu email para confirmar antes de iniciar sesión.";
+        }
+      }
+    } catch (err) {
+      $("authError").textContent = err.message;
+    } finally {
+      submitBtn.disabled = false;
+    }
+  });
+
+  $("logoutBtn").addEventListener("click", () => supabase.auth.signOut());
+
+  supabase.auth.onAuthStateChange(async (event, session) => {
+    if (session && session.user) {
+      if (currentUserId !== session.user.id) {
+        currentUserId = session.user.id;
+        showApp(session.user);
+        await loadAllData();
+        renderAll();
+      }
+    } else {
+      currentUserId = null;
+      showAuthScreen();
+    }
+  });
 })();
