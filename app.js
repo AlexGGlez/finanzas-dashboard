@@ -8,13 +8,13 @@
   const DEFAULT_CATEGORIES = [
     "Alimentación", "Vivienda", "Transporte", "Ocio", "Salud",
     "Educación", "Ropa", "Suscripciones", "Ahorro/Inversión", "Otros", "Nómina/Ingresos",
-    "Coche", "Apuestas"
+    "Coche", "Apuestas", "Suministros Casa"
   ];
 
   const CATEGORY_COLORS = [
     "#6d8cff", "#3ecf8e", "#ff6b6b", "#f5c150", "#c179f2",
     "#3fc7d6", "#ff9f6b", "#8fd14f", "#f27bb0", "#9aa1ac", "#5ad1a8",
-    "#e08ef7", "#4fa3e3"
+    "#e08ef7", "#4fa3e3", "#7ee787"
   ];
 
   const fmt = (n) => "€" + (Number(n) || 0).toLocaleString("es-ES", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
